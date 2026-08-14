@@ -28,7 +28,10 @@ Fully bilingual (English/French) and theme-aware (light/dark) throughout, follow
 
 - **Landing Page** — bold, food-forward marketing page: animated live order-status demo, feature highlights (AI recommendations, visual dish search, AI ordering assistant, live tracking), a "how it works" walkthrough, and a restaurant-partner call to action
 - **Login** — split-panel authentication screen with email/password sign-in
-- **Admin Console** — collapsible sidebar, Topbar (search, notifications, theme + language switcher, user menu), and a Dashboard with stat cards, a revenue chart, recent activity feed, and top-restaurants ranking (currently on mock data; API wiring in progress)
+- **Register** — split-panel sign-up screen with name/email/password sign-up
+- **forgot-password** — split-panel screen with email
+- **reset-password** — split-panel screen with new-password/confirmed-password 
+- **Admin dashboard** — collapsible sidebar, Topbar (search, notifications, theme + language switcher, user menu), and a Dashboard with stat cards, a revenue chart, recent activity feed
 - **Custom Logo** — an original FeastIQ mark (flame-in-gradient badge + two-tone wordmark), used consistently across the app
 
 ---
