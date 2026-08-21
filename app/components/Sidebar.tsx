@@ -33,13 +33,13 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const sidebarT = t?.sidebar || {};
 
   const goToDashboard = () => router.push("/admin/dashboard");
-  const goToCustomers = () => router.push("/admin/dashboard/customers");
-  const goToRestaurants = () => router.push("/admin/dashboard/restaurants");
-  const goToUsers = () => router.push("/admin/dashboard/users");
-  const goToRoles = () => router.push("/admin/dashboard/roles");
-  const goToNotifications = () => router.push("/admin/dashboard/notifications");
-  const goToReviews = () => router.push("/admin/dashboard/reviews");
-  const goToSystems = () => router.push("/admin/dashboard/systems");
+  const goToCustomers = () => router.push("/admin/customers");
+  const goToRestaurants = () => router.push("/admin/restaurants");
+  const goToUsers = () => router.push("/admin/users");
+  const goToRoles = () => router.push("/admin/roles");
+  const goToNotifications = () => router.push("/admin/notifications");
+  const goToReviews = () => router.push("/admin/reviews");
+  const goToSystems = () => router.push("/admin/systems");
 
   const handleLogout = async (closeToast: () => void) => {
     try {
@@ -160,20 +160,20 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
                 {sidebarT.userManagement || "User Management"}
               </li>
             )}
-            <li onClick={goToCustomers} className={getLiClass("/admin/dashboard/customers")} style={liStyle}>
+            <li onClick={goToCustomers} className={getLiClass("/admin/customers")} style={liStyle}>
               <FaUsers size={14} className={pathname.startsWith("/admin/dashboard/customers") ? "text-white" : "text-orange-500"} />
               {!collapsed && <span>{sidebarT.customers || "Customers"}</span>}
             </li>
-            <li onClick={goToRestaurants} className={getLiClass("/admin/dashboard/restaurants")} style={liStyle}>
-              <FaStore size={14} className={pathname.startsWith("/admin/dashboard/restaurants") ? "text-white" : "text-orange-500"} />
+            <li onClick={goToRestaurants} className={getLiClass("/admin/restaurants")} style={liStyle}>
+              <FaStore size={14} className={pathname.startsWith("/admin/restaurants") ? "text-white" : "text-orange-500"} />
               {!collapsed && <span>{sidebarT.restaurants || "Restaurants"}</span>}
             </li>
-            <li onClick={goToUsers} className={getLiClass("/admin/dashboard/users")} style={liStyle}>
-              <FaUserShield size={14} className={pathname.startsWith("/admin/dashboard/users") ? "text-white" : "text-orange-500"} />
+            <li onClick={goToUsers} className={getLiClass("/admin/users")} style={liStyle}>
+              <FaUserShield size={14} className={pathname.startsWith("/admin/users") ? "text-white" : "text-orange-500"} />
               {!collapsed && <span>{sidebarT.users || "Users"}</span>}
             </li>
-            <li onClick={goToRoles} className={getLiClass("/admin/dashboard/roles")} style={liStyle}>
-              <FaUserTag size={14} className={pathname.startsWith("/admin/dashboard/roles") ? "text-white" : "text-orange-500"} />
+            <li onClick={goToRoles} className={getLiClass("/admin/roles")} style={liStyle}>
+              <FaUserTag size={14} className={pathname.startsWith("/admin/roles") ? "text-white" : "text-orange-500"} />
               {!collapsed && <span>{sidebarT.roles || "Roles"}</span>}
             </li>
           </div>
@@ -185,16 +185,16 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
                 {sidebarT.operationsAndSystem || "Operations & System"}
               </li>
             )}
-            <li onClick={goToNotifications} className={getLiClass("/admin/dashboard/notifications")} style={liStyle}>
-              <FaBell size={14} className={pathname.startsWith("/admin/dashboard/notifications") ? "text-white" : "text-orange-500"} />
+            <li onClick={goToNotifications} className={getLiClass("/admin/notifications")} style={liStyle}>
+              <FaBell size={14} className={pathname.startsWith("/admin/notifications") ? "text-white" : "text-orange-500"} />
               {!collapsed && <span className="flex-1">{sidebarT.notifications || "Notifications"}</span>}
             </li>
-            <li onClick={goToReviews} className={getLiClass("/admin/dashboard/reviews")} style={liStyle}>
-              <FaStar size={14} className={pathname.startsWith("/admin/dashboard/reviews") ? "text-white" : "text-orange-500"} />
+            <li onClick={goToReviews} className={getLiClass("/admin/reviews")} style={liStyle}>
+              <FaStar size={14} className={pathname.startsWith("/admin/reviews") ? "text-white" : "text-orange-500"} />
               {!collapsed && <span className="flex-1">{sidebarT.reviewsSystem || "Reviews System"}</span>}
             </li>
-            <li onClick={goToSystems} className={getLiClass("/admin/dashboard/systems")} style={liStyle}>
-              <FaCogs size={16} className={pathname.startsWith("/admin/dashboard/systems") ? "text-white" : "text-orange-500"} />
+            <li onClick={goToSystems} className={getLiClass("/admin/systems")} style={liStyle}>
+              <FaCogs size={16} className={pathname.startsWith("/admin/systems") ? "text-white" : "text-orange-500"} />
               {!collapsed && <span>{sidebarT.systems || "Systems"}</span>}
             </li>
           </div>
