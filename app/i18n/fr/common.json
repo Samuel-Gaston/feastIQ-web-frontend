@@ -99,7 +99,13 @@
     "signIn": "Se connecter",
     "signingIn": "Connexion en cours...",
     "noAccount": "Vous n'avez pas de compte ?",
-    "getStarted": "Commencer"
+    "getStarted": "Commencer",
+    "sessionExpired": "Votre session a expiré. Veuillez vous reconnecter pour continuer.",
+"invalidCredentials": "E-mail ou mot de passe invalide.",
+"networkError": "Impossible de joindre le serveur. Vérifiez votre connexion et réessayez.",
+"customerNotAllowed": "Ce portail est réservé aux propriétaires de restaurants et aux administrateurs. Les clients peuvent commander via l'application mobile FeastIQ.",
+"showPassword": "Afficher le mot de passe",
+"hidePassword": "Masquer le mot de passe"
   },
   "register": {
     "registerWelcome": "Créer un Compte",
@@ -198,7 +204,24 @@
     "status": "Statut",
     "success": "Succès",
     "warning": "Avertissement",
-    "aiMetric": "Métrique IA"
+    "aiMetric": "Métrique IA",
+    "assistantLabel": "Assistant API Groq",
+"classifierLabel": "Classificateur Visuel de Plats",
+"loadError": "Impossible de charger les données du tableau de bord.",
+"retry": "Réessayer",
+"noActivity": "Aucune activité récente.",
+"activityOrderPlaced": "{user} a passé une commande chez {restaurant}",
+"activityOrderDelivered": "La commande de {user} chez {restaurant} a été livrée",
+"activityOrderCancelled": "La commande de {user} chez {restaurant} a été annulée",
+"activityRestaurantRegistered": "{restaurant} s'est inscrit sur la plateforme",
+"timeJustNow": "À l'instant",
+"timeMinutes": "il y a {n} min",
+"timeHours": "il y a {n} h",
+"timeDays": "il y a {n} j",
+"paginationShowing": "Affichage",
+"paginationOf": "sur",
+"prev": "Précédent",
+"next": "Suivant"
   },
   "sidebar": {
     "admin": "Admin",

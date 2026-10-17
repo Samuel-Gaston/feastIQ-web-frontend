@@ -99,7 +99,14 @@
     "signIn": "Sign In",
     "signingIn": "Signing in...",
     "noAccount": "Don't have an account?",
-    "getStarted": "Get Started"
+    "getStarted": "Get Started",
+    "sessionExpired": "Your session has expired. Please log in again to continue.",
+"invalidCredentials": "Invalid email or password.",
+"networkError": "Cannot reach the server. Check your connection and try again.",
+"customerNotAllowed": "This portal is for restaurant owners and administrators. Customers can order through the FeastIQ mobile app.",
+"showPassword": "Show password",
+"hidePassword": "Hide password",
+"roleNotResolved":""
   },
   "register": {
     "registerWelcome": "Create an Account",
@@ -198,7 +205,24 @@
     "status": "Status",
     "success": "Success",
     "warning": "Warning",
-    "aiMetric": "AI Metric"
+    "aiMetric": "AI Metric",
+    "assistantLabel": "Groq API Assistant",
+"classifierLabel": "Food Vision Classifier",
+"loadError": "Could not load dashboard data.",
+"retry": "Retry",
+"noActivity": "No recent activity.",
+"activityOrderPlaced": "{user} placed an order at {restaurant}",
+"activityOrderDelivered": "{user}'s order from {restaurant} was delivered",
+"activityOrderCancelled": "{user}'s order at {restaurant} was cancelled",
+"activityRestaurantRegistered": "{restaurant} registered on the platform",
+"timeJustNow": "Just now",
+"timeMinutes": "{n} min ago",
+"timeHours": "{n} h ago",
+"timeDays": "{n} d ago",
+"paginationShowing": "Showing",
+"paginationOf": "of",
+"prev": "Prev",
+"next": "Next"
   },
   "sidebar": {
     "admin": "Admin",

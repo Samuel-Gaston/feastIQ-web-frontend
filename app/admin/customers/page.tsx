@@ -1,26 +1,68 @@
 "use client";
 
-import { 
-  FaUsers, 
-  FaUserCheck, 
-  FaUserTimes, 
-  FaSearch, 
-  FaPlus, 
-  FaEye, 
-  FaBan, 
-  FaEdit, 
-  FaTrash, 
-  FaChevronLeft, 
+import {
+  FaUsers,
+  FaUserCheck,
+  FaUserTimes,
+  FaSearch,
+  FaPlus,
+  FaEye,
+  FaBan,
+  FaEdit,
+  FaTrash,
+  FaChevronLeft,
   FaChevronRight,
   FaTimes,
   FaEnvelope,
   FaPhone,
   FaMapMarkerAlt,
-  FaLock, FaUser} from "react-icons/fa";
+  FaLock,
+  FaUser,
+} from "react-icons/fa";
 import Topbar from "@/app/components/Topbar";
 import Sidebar from "@/app/components/Sidebar";
 import { useLanguage } from "@/app/context/LanguageContext";
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
+import api from "@/app/api/api";
+
+type Customer = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  address: string;
+  status: "active" | "inactive";
+  ordersCount?: number;
+};
+
+const emptyForm = { name: "", email: "", password: "", phone: "", address: "" };
+
+const normalizeCustomer = (c: any): Customer => ({
+  id: String(c._id ?? c.id),
+  name: c.name ?? c.user?.name ?? "",
+  email: c.email ?? c.user?.email ?? "",
+  phone: c.phone ?? "",
+  address: c.address ?? "",
+  status: (c.user?.isActive ?? c.isActive ?? true) ? "active" : "inactive",
+  ordersCount: c.ordersCount,
+});
+
+const getErrorMessage = (err: any, fallback: string): string => {
+  if (!err?.response) return "Cannot reach the server. Check your connection.";
+  const m = err.response?.data?.message;
+  if (Array.isArray(m)) return m.join(", ");
+  return m || fallback;
+};
+
+const FormError = ({ message }: { message: string | null }) =>
+  message ? (
+    <div
+      role="alert"
+      className="text-xs rounded-lg border border-red-200 dark:border-red-900/30 bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-300 px-3 py-2"
+    >
+      {message}
+    </div>
+  ) : null;
 
 export default function AdminCustomersPage() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -32,16 +74,12 @@ export default function AdminCustomersPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
 
-  const [customers, setCustomers] = useState([
-    { id: 1, name: "Marie Claire", email: "marie.claire@example.com", phone: "+237 600000001", address: "Bonapriso, Douala", status: "active", ordersCount: 24 },
-    { id: 2, name: "Jean Paul", email: "jean.paul@example.com", phone: "+237 600000002", address: "Akwa, Douala", status: "inactive", ordersCount: 3 },
-    { id: 3, name: "Aissatou Bello", email: "aissatou.bello@example.com", phone: "+237 600000003", address: "Bastos, Yaoundé", status: "active", ordersCount: 42 },
-    { id: 4, name: "Samuel Eto", email: "samuel.eto@example.com", phone: "+237 600000004", address: "Omnisport, Yaoundé", status: "active", ordersCount: 15 },
-    { id: 5, name: "Chantal Biya", email: "chantal.biya@example.com", phone: "+237 600000005", address: "Etoudi, Yaoundé", status: "inactive", ordersCount: 0 },
-    { id: 6, name: "Tanyi Mbi", email: "tanyi.mbi@example.com", phone: "+237 600000006", address: "Molyko, Buea", status: "active", ordersCount: 8 },
-  ]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
-  // Modal States
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -49,24 +87,36 @@ export default function AdminCustomersPage() {
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
 
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
+  const [formData, setFormData] = useState(emptyForm);
 
- 
-  const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    password: "",
-    phone: "",
-    address: "",
-  });
+  const fetchCustomers = useCallback(async () => {
+    try {
+      setLoadError(null);
+      const res = await api.get("/customers");
+      const raw = res.data?.data ?? res.data;
+      const list = Array.isArray(raw) ? raw : raw?.items ?? [];
+      setCustomers(list.map(normalizeCustomer));
+    } catch (err) {
+      setLoadError(getErrorMessage(err, "Could not load customers."));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchCustomers();
+  }, [fetchCustomers]);
 
   const totalCustomers = customers.length;
-  const activeCustomers = customers.filter(c => c.status === "active").length;
-  const inactiveCustomers = customers.filter(c => c.status === "inactive").length;
+  const activeCustomers = customers.filter((c) => c.status === "active").length;
+  const inactiveCustomers = customers.filter((c) => c.status === "inactive").length;
 
-  const filteredCustomers = customers.filter(c => {
-    const matchesSearch = c.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          c.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          (c.phone && c.phone.includes(searchQuery));
+  const filteredCustomers = customers.filter((c) => {
+    const q = searchQuery.toLowerCase();
+    const matchesSearch =
+      c.name.toLowerCase().includes(q) ||
+      c.email.toLowerCase().includes(q) ||
+      (c.phone && c.phone.includes(searchQuery));
     const matchesFilter = statusFilter === "all" || c.status === statusFilter;
     return matchesSearch && matchesFilter;
   });
@@ -77,53 +127,106 @@ export default function AdminCustomersPage() {
     currentPage * itemsPerPage
   );
 
-  const handleCreateSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const newCust = {
-      id: customers.length + 1,
-      name: formData.name,
-      email: formData.email,
-      phone: formData.phone || "+237 000000000",
-      address: formData.address || "Douala, Cameroon",
-      status: "active",
-      ordersCount: 0,
-    };
-    setCustomers([newCust, ...customers]);
-    setFormData({ name: "", email: "", password: "", phone: "", address: "" });
-    setIsCreateOpen(false);
-  };
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(totalPages);
+  }, [totalPages, currentPage]);
 
-  const handleEditSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setCustomers(customers.map(c => c.id === selectedCustomer.id ? { ...c, ...formData } : c));
-    setIsEditOpen(false);
-  };
-
-  const handleSuspendConfirm = () => {
-    setCustomers(customers.map(c => {
-      if (c.id === selectedCustomer.id) {
-        const nextStatus = c.status === "active" ? "inactive" : "active";
-        return { ...c, status: nextStatus };
+  const openView = async (cust: Customer) => {
+    setSelectedCustomer(cust);
+    setIsViewOpen(true);
+    try {
+      const res = await api.get(`/customers/${cust.id}`);
+      const raw = res.data?.data ?? res.data;
+      if (raw && typeof raw === "object") {
+        setSelectedCustomer({ ...cust, ...normalizeCustomer(raw) });
       }
-      return c;
-    }));
-    setIsSuspendOpen(false);
+    } catch {}
   };
 
-  const handleDeleteConfirm = () => {
-    setCustomers(customers.filter(c => c.id !== selectedCustomer.id));
-    setIsDeleteOpen(false);
+  const handleCreateSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setFormError(null);
+    try {
+      const payload: Record<string, string> = {
+        name: formData.name.trim(),
+        email: formData.email.trim(),
+        password: formData.password,
+      };
+      if (formData.phone.trim()) payload.phone = formData.phone.trim();
+      if (formData.address.trim()) payload.address = formData.address.trim();
+
+      await api.post("/customers", payload);
+      await fetchCustomers();
+      setFormData(emptyForm);
+      setCurrentPage(1);
+      setIsCreateOpen(false);
+    } catch (err) {
+      setFormError(getErrorMessage(err, "Could not create the customer."));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setFormError(null);
+    try {
+      const payload: Record<string, string> = {
+        name: formData.name.trim(),
+        email: formData.email.trim(),
+      };
+      if (formData.phone.trim()) payload.phone = formData.phone.trim();
+      if (formData.address.trim()) payload.address = formData.address.trim();
+
+      await api.patch(`/customers/${selectedCustomer.id}`, payload);
+      await fetchCustomers();
+      setIsEditOpen(false);
+    } catch (err) {
+      setFormError(getErrorMessage(err, "Could not update the customer."));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSuspendConfirm = async () => {
+    setSaving(true);
+    setFormError(null);
+    try {
+      const nextActive = selectedCustomer.status !== "active";
+      await api.patch(`/customers/${selectedCustomer.id}/status`, { isActive: nextActive });
+      await fetchCustomers();
+      setIsSuspendOpen(false);
+    } catch (err) {
+      setFormError(getErrorMessage(err, "Could not update the customer status."));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
+    setSaving(true);
+    setFormError(null);
+    try {
+      await api.delete(`/customers/${selectedCustomer.id}`);
+      await fetchCustomers();
+      setIsDeleteOpen(false);
+    } catch (err) {
+      setFormError(getErrorMessage(err, "Could not delete the customer."));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
     <div style={{ fontFamily: "'Times New Roman', Times, serif" }} className="min-h-screen bg-white dark:bg-[#1A1310] text-[#1A1310] dark:text-white flex transition-colors duration-300">
-      <Sidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(v => !v)} />
+      <Sidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed((v) => !v)} />
 
       <div className="flex-1 flex flex-col min-w-0">
         <Topbar />
 
         <main className="flex-1 p-6 space-y-6 overflow-y-auto">
-          {/* Page Header */}
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
               <h1 className="text-2xl font-black text-[#1A1310] dark:text-white">
@@ -133,9 +236,10 @@ export default function AdminCustomersPage() {
                 {custT.subtitle}
               </p>
             </div>
-            <button 
+            <button
               onClick={() => {
-                setFormData({ name: "", email: "", password: "", phone: "", address: "" });
+                setFormData(emptyForm);
+                setFormError(null);
                 setIsCreateOpen(true);
               }}
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-orange-600 hover:bg-orange-700 text-white shadow-sm transition-all"
@@ -144,9 +248,8 @@ export default function AdminCustomersPage() {
             </button>
           </div>
 
-          {/* Three Summary Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div 
+            <div
               onClick={() => { setStatusFilter("all"); setCurrentPage(1); }}
               className={`cursor-pointer bg-orange-50/30 dark:bg-[#241C17]/60 border ${statusFilter === "all" ? "border-orange-500 dark:border-orange-500" : "border-orange-100 dark:border-orange-900/30"} rounded-xl p-4 shadow-sm flex items-center justify-between transition-all`}
             >
@@ -159,7 +262,7 @@ export default function AdminCustomersPage() {
               </div>
             </div>
 
-            <div 
+            <div
               onClick={() => { setStatusFilter("active"); setCurrentPage(1); }}
               className={`cursor-pointer bg-orange-50/30 dark:bg-[#241C17]/60 border ${statusFilter === "active" ? "border-emerald-500 dark:border-emerald-500" : "border-orange-100 dark:border-orange-900/30"} rounded-xl p-4 shadow-sm flex items-center justify-between transition-all`}
             >
@@ -172,7 +275,7 @@ export default function AdminCustomersPage() {
               </div>
             </div>
 
-            <div 
+            <div
               onClick={() => { setStatusFilter("inactive"); setCurrentPage(1); }}
               className={`cursor-pointer bg-orange-50/30 dark:bg-[#241C17]/60 border ${statusFilter === "inactive" ? "border-amber-500 dark:border-amber-500" : "border-orange-100 dark:border-orange-900/30"} rounded-xl p-4 shadow-sm flex items-center justify-between transition-all`}
             >
@@ -186,12 +289,26 @@ export default function AdminCustomersPage() {
             </div>
           </div>
 
-          {/* Search Bar & Filters Section */}
+          {loadError && (
+            <div
+              role="alert"
+              className="flex items-center justify-between gap-3 text-xs rounded-xl border border-red-200 dark:border-red-900/30 bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-300 px-4 py-3"
+            >
+              <span>{loadError}</span>
+              <button
+                onClick={() => { setLoading(true); fetchCustomers(); }}
+                className="px-3 py-1.5 rounded-lg bg-red-600 text-white font-bold hover:bg-red-700"
+              >
+                Retry
+              </button>
+            </div>
+          )}
+
           <div className="bg-orange-50/30 dark:bg-[#241C17]/60 border border-orange-100 dark:border-orange-900/30 rounded-xl p-5 shadow-sm space-y-4">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
               <div className="relative w-full sm:w-80">
                 <FaSearch className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" size={13} />
-                <input 
+                <input
                   type="text"
                   placeholder={custT.searchPlaceholder}
                   value={searchQuery}
@@ -202,7 +319,7 @@ export default function AdminCustomersPage() {
 
               <div className="flex items-center gap-2 w-full sm:w-auto">
                 <span className="text-xs text-gray-500 dark:text-white/60 font-semibold">{custT.filterLabel}:</span>
-                <select 
+                <select
                   value={statusFilter}
                   onChange={(e) => { setStatusFilter(e.target.value); setCurrentPage(1); }}
                   className="px-3 py-2 text-xs bg-white dark:bg-[#1A1310] border border-orange-200 dark:border-orange-900/40 rounded-lg text-[#1A1310] dark:text-white focus:outline-none focus:border-orange-500"
@@ -214,8 +331,7 @@ export default function AdminCustomersPage() {
               </div>
             </div>
 
-            {/* Table Container */}
-            <div 
+            <div
               className="overflow-x-auto w-full pb-2"
               style={{
                 scrollbarWidth: "thin",
@@ -234,7 +350,13 @@ export default function AdminCustomersPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-orange-100/50 dark:divide-orange-900/20 text-[13px]">
-                  {paginatedCustomers.length > 0 ? (
+                  {loading ? (
+                    <tr>
+                      <td colSpan={6} className="py-6 text-center text-gray-400 dark:text-white/40 text-xs">
+                        Loading customers...
+                      </td>
+                    </tr>
+                  ) : paginatedCustomers.length > 0 ? (
                     paginatedCustomers.map((cust) => (
                       <tr key={cust.id} className="hover:bg-orange-100/20 dark:hover:bg-white/5 transition-colors">
                         <td className="py-3 font-bold text-[#1A1310] dark:text-white whitespace-nowrap">
@@ -262,34 +384,35 @@ export default function AdminCustomersPage() {
                         </td>
                         <td className="py-3 text-right whitespace-nowrap">
                           <div className="inline-flex items-center gap-2">
-                            <button 
-                              onClick={() => { setSelectedCustomer(cust); setIsViewOpen(true); }}
-                              title={custT.actionView} 
+                            <button
+                              onClick={() => openView(cust)}
+                              title={custT.actionView}
                               className="p-1.5 rounded-lg bg-blue-100/50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 hover:bg-blue-200 transition-colors"
                             >
                               <FaEye size={12} />
                             </button>
-                            <button 
-                              onClick={() => { setSelectedCustomer(cust); setIsSuspendOpen(true); }}
-                              title={custT.actionSuspend} 
+                            <button
+                              onClick={() => { setSelectedCustomer(cust); setFormError(null); setIsSuspendOpen(true); }}
+                              title={custT.actionSuspend}
                               className="p-1.5 rounded-lg bg-amber-100/50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 hover:bg-amber-200 transition-colors"
                             >
                               <FaBan size={12} />
                             </button>
-                            <button 
-                              onClick={() => { 
-                                setSelectedCustomer(cust); 
+                            <button
+                              onClick={() => {
+                                setSelectedCustomer(cust);
                                 setFormData({ name: cust.name, email: cust.email, password: "", phone: cust.phone || "", address: cust.address || "" });
-                                setIsEditOpen(true); 
+                                setFormError(null);
+                                setIsEditOpen(true);
                               }}
-                              title={custT.actionEdit} 
+                              title={custT.actionEdit}
                               className="p-1.5 rounded-lg bg-orange-100/50 dark:bg-orange-950/40 text-orange-600 dark:text-orange-400 hover:bg-orange-200 transition-colors"
                             >
                               <FaEdit size={12} />
                             </button>
-                            <button 
-                              onClick={() => { setSelectedCustomer(cust); setIsDeleteOpen(true); }}
-                              title={custT.actionDelete} 
+                            <button
+                              onClick={() => { setSelectedCustomer(cust); setFormError(null); setIsDeleteOpen(true); }}
+                              title={custT.actionDelete}
                               className="p-1.5 rounded-lg bg-red-100/50 dark:bg-red-950/40 text-red-600 dark:text-red-400 hover:bg-red-200 transition-colors"
                             >
                               <FaTrash size={12} />
@@ -309,15 +432,14 @@ export default function AdminCustomersPage() {
               </table>
             </div>
 
-            {/* Pagination Controls */}
             {totalPages > 1 && (
               <div className="flex items-center justify-between pt-3 border-t border-orange-100 dark:border-orange-900/30 text-xs">
                 <span className="text-gray-500 dark:text-white/60">
                   {custT.pageText || "Page"} {currentPage} {custT.ofText || "of"} {totalPages}
                 </span>
                 <div className="flex items-center gap-1">
-                  <button 
-                    onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
                     disabled={currentPage === 1}
                     className="p-2 rounded-lg border border-orange-200 dark:border-orange-900/40 disabled:opacity-40 text-gray-600 dark:text-white hover:bg-orange-100/30 transition-colors"
                   >
@@ -336,8 +458,8 @@ export default function AdminCustomersPage() {
                       {page}
                     </button>
                   ))}
-                  <button 
-                    onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))}
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
                     disabled={currentPage === totalPages}
                     className="p-2 rounded-lg border border-orange-200 dark:border-orange-900/40 disabled:opacity-40 text-gray-600 dark:text-white hover:bg-orange-100/30 transition-colors"
                   >
@@ -350,7 +472,6 @@ export default function AdminCustomersPage() {
         </main>
       </div>
 
-      {/* CREATE CUSTOMER MODAL */}
       {isCreateOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="bg-white dark:bg-[#241C17] border border-orange-200 dark:border-orange-900/40 rounded-2xl w-full max-w-md p-6 shadow-xl space-y-4">
@@ -365,14 +486,14 @@ export default function AdminCustomersPage() {
                 <label className="block text-xs font-semibold text-gray-600 dark:text-white/70 mb-1">{custT.colName} *</label>
                 <div className="relative">
                   <FaUser className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={12} />
-                  <input 
-                    type="text" 
-                    required 
-                    minLength={2} 
+                  <input
+                    type="text"
+                    required
+                    minLength={2}
                     maxLength={50}
                     placeholder="Enter name"
                     value={formData.name}
-                    onChange={(e) => setFormData({...formData, name: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     className="w-full pl-9 pr-3 py-2 text-xs bg-orange-50/30 dark:bg-[#1A1310] border border-orange-200 dark:border-orange-900/40 rounded-lg focus:outline-none focus:border-orange-500"
                   />
                 </div>
@@ -381,12 +502,12 @@ export default function AdminCustomersPage() {
                 <label className="block text-xs font-semibold text-gray-600 dark:text-white/70 mb-1">{custT.colEmail} *</label>
                 <div className="relative">
                   <FaEnvelope className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={12} />
-                  <input 
-                    type="email" 
-                    required 
+                  <input
+                    type="email"
+                    required
                     placeholder="Enter email"
                     value={formData.email}
-                    onChange={(e) => setFormData({...formData, email: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     className="w-full pl-9 pr-3 py-2 text-xs bg-orange-50/30 dark:bg-[#1A1310] border border-orange-200 dark:border-orange-900/40 rounded-lg focus:outline-none focus:border-orange-500"
                   />
                 </div>
@@ -395,14 +516,12 @@ export default function AdminCustomersPage() {
                 <label className="block text-xs font-semibold text-gray-600 dark:text-white/70 mb-1">Password *</label>
                 <div className="relative">
                   <FaLock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={12} />
-                  <input 
-                    type="password" 
-                    required 
-                    minLength={6} 
-                    maxLength={50}
+                  <input
+                    type="password"
+                    required
                     placeholder="Enter password"
                     value={formData.password}
-                    onChange={(e) => setFormData({...formData, password: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                     className="w-full pl-9 pr-3 py-2 text-xs bg-orange-50/30 dark:bg-[#1A1310] border border-orange-200 dark:border-orange-900/40 rounded-lg focus:outline-none focus:border-orange-500"
                   />
                 </div>
@@ -411,13 +530,13 @@ export default function AdminCustomersPage() {
                 <label className="block text-xs font-semibold text-gray-600 dark:text-white/70 mb-1">{custT.colPhone}</label>
                 <div className="relative">
                   <FaPhone className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={12} />
-                  <input 
-                    type="text" 
-                    minLength={2} 
+                  <input
+                    type="text"
+                    minLength={2}
                     maxLength={50}
                     placeholder="Enter phone number"
                     value={formData.phone}
-                    onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                     className="w-full pl-9 pr-3 py-2 text-xs bg-orange-50/30 dark:bg-[#1A1310] border border-orange-200 dark:border-orange-900/40 rounded-lg focus:outline-none focus:border-orange-500"
                   />
                 </div>
@@ -426,30 +545,32 @@ export default function AdminCustomersPage() {
                 <label className="block text-xs font-semibold text-gray-600 dark:text-white/70 mb-1">{custT.colAddress}</label>
                 <div className="relative">
                   <FaMapMarkerAlt className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={12} />
-                  <input 
-                    type="text" 
-                    minLength={2} 
+                  <input
+                    type="text"
+                    minLength={2}
                     maxLength={50}
                     placeholder="Enter address"
                     value={formData.address}
-                    onChange={(e) => setFormData({...formData, address: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                     className="w-full pl-9 pr-3 py-2 text-xs bg-orange-50/30 dark:bg-[#1A1310] border border-orange-200 dark:border-orange-900/40 rounded-lg focus:outline-none focus:border-orange-500"
                   />
                 </div>
               </div>
+              <FormError message={formError} />
               <div className="flex justify-end gap-2 pt-3">
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={() => setIsCreateOpen(false)}
                   className="px-4 py-2 rounded-lg border border-orange-200 dark:border-orange-900/40 text-xs font-bold hover:bg-orange-100/30"
                 >
                   Cancel
                 </button>
-                <button 
+                <button
                   type="submit"
-                  className="px-4 py-2 rounded-lg bg-orange-600 text-white text-xs font-bold hover:bg-orange-700 shadow-sm"
+                  disabled={saving}
+                  className="px-4 py-2 rounded-lg bg-orange-600 text-white text-xs font-bold hover:bg-orange-700 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Save Customer
+                  {saving ? "Saving..." : "Save Customer"}
                 </button>
               </div>
             </form>
@@ -457,7 +578,6 @@ export default function AdminCustomersPage() {
         </div>
       )}
 
-      {/* VIEW CUSTOMER MODAL */}
       {isViewOpen && selectedCustomer && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="bg-white dark:bg-[#241C17] border border-orange-200 dark:border-orange-900/40 rounded-2xl w-full max-w-md p-6 shadow-xl space-y-4">
@@ -490,11 +610,11 @@ export default function AdminCustomersPage() {
               </div>
               <div className="flex justify-between py-1.5">
                 <span className="font-semibold text-gray-500 dark:text-white/60">Total Orders:</span>
-                <span className="font-bold text-[#1A1310] dark:text-white">{selectedCustomer.ordersCount}</span>
+                <span className="font-bold text-[#1A1310] dark:text-white">{selectedCustomer.ordersCount ?? "N/A"}</span>
               </div>
             </div>
             <div className="flex justify-end pt-2">
-              <button 
+              <button
                 onClick={() => setIsViewOpen(false)}
                 className="px-4 py-2 rounded-lg bg-orange-600 text-white text-xs font-bold hover:bg-orange-700 shadow-sm"
               >
@@ -505,7 +625,6 @@ export default function AdminCustomersPage() {
         </div>
       )}
 
-      {/* EDIT CUSTOMER MODAL */}
       {isEditOpen && selectedCustomer && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="bg-white dark:bg-[#241C17] border border-orange-200 dark:border-orange-900/40 rounded-2xl w-full max-w-md p-6 shadow-xl space-y-4">
@@ -518,61 +637,63 @@ export default function AdminCustomersPage() {
             <form onSubmit={handleEditSubmit} className="space-y-3">
               <div>
                 <label className="block text-xs font-semibold text-gray-600 dark:text-white/70 mb-1">{custT.colName} *</label>
-                <input 
-                  type="text" 
-                  required 
-                  minLength={2} 
+                <input
+                  type="text"
+                  required
+                  minLength={2}
                   maxLength={50}
                   value={formData.name}
-                  onChange={(e) => setFormData({...formData, name: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   className="w-full px-3 py-2 text-xs bg-orange-50/30 dark:bg-[#1A1310] border border-orange-200 dark:border-orange-900/40 rounded-lg focus:outline-none focus:border-orange-500"
                 />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-600 dark:text-white/70 mb-1">{custT.colEmail} *</label>
-                <input 
-                  type="email" 
-                  required 
+                <input
+                  type="email"
+                  required
                   value={formData.email}
-                  onChange={(e) => setFormData({...formData, email: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   className="w-full px-3 py-2 text-xs bg-orange-50/30 dark:bg-[#1A1310] border border-orange-200 dark:border-orange-900/40 rounded-lg focus:outline-none focus:border-orange-500"
                 />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-600 dark:text-white/70 mb-1">{custT.colPhone}</label>
-                <input 
-                  type="text" 
-                  minLength={2} 
+                <input
+                  type="text"
+                  minLength={2}
                   maxLength={50}
                   value={formData.phone}
-                  onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                   className="w-full px-3 py-2 text-xs bg-orange-50/30 dark:bg-[#1A1310] border border-orange-200 dark:border-orange-900/40 rounded-lg focus:outline-none focus:border-orange-500"
                 />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-600 dark:text-white/70 mb-1">{custT.colAddress}</label>
-                <input 
-                  type="text" 
-                  minLength={2} 
+                <input
+                  type="text"
+                  minLength={2}
                   maxLength={50}
                   value={formData.address}
-                  onChange={(e) => setFormData({...formData, address: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                   className="w-full px-3 py-2 text-xs bg-orange-50/30 dark:bg-[#1A1310] border border-orange-200 dark:border-orange-900/40 rounded-lg focus:outline-none focus:border-orange-500"
                 />
               </div>
+              <FormError message={formError} />
               <div className="flex justify-end gap-2 pt-3">
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={() => setIsEditOpen(false)}
                   className="px-4 py-2 rounded-lg border border-orange-200 dark:border-orange-900/40 text-xs font-bold hover:bg-orange-100/30"
                 >
                   Cancel
                 </button>
-                <button 
+                <button
                   type="submit"
-                  className="px-4 py-2 rounded-lg bg-orange-600 text-white text-xs font-bold hover:bg-orange-700 shadow-sm"
+                  disabled={saving}
+                  className="px-4 py-2 rounded-lg bg-orange-600 text-white text-xs font-bold hover:bg-orange-700 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Update Customer
+                  {saving ? "Saving..." : "Update Customer"}
                 </button>
               </div>
             </form>
@@ -580,7 +701,6 @@ export default function AdminCustomersPage() {
         </div>
       )}
 
-      {/* SUSPEND / TOGGLE STATUS MODAL */}
       {isSuspendOpen && selectedCustomer && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="bg-white dark:bg-[#241C17] border border-orange-200 dark:border-orange-900/40 rounded-2xl w-full max-w-sm p-6 shadow-xl space-y-4 text-center">
@@ -595,25 +715,26 @@ export default function AdminCustomersPage() {
                 Are you sure you want to change the status of <span className="font-bold text-[#1A1310] dark:text-white">{selectedCustomer.name}</span>?
               </p>
             </div>
+            <FormError message={formError} />
             <div className="flex justify-center gap-2 pt-2">
-              <button 
+              <button
                 onClick={() => setIsSuspendOpen(false)}
                 className="px-4 py-2 rounded-lg border border-orange-200 dark:border-orange-900/40 text-xs font-bold hover:bg-orange-100/30"
               >
                 Cancel
               </button>
-              <button 
+              <button
                 onClick={handleSuspendConfirm}
-                className="px-4 py-2 rounded-lg bg-amber-600 text-white text-xs font-bold hover:bg-amber-700 shadow-sm"
+                disabled={saving}
+                className="px-4 py-2 rounded-lg bg-amber-600 text-white text-xs font-bold hover:bg-amber-700 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Confirm
+                {saving ? "Saving..." : "Confirm"}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* DELETE CUSTOMER MODAL */}
       {isDeleteOpen && selectedCustomer && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="bg-white dark:bg-[#241C17] border border-orange-200 dark:border-orange-900/40 rounded-2xl w-full max-w-sm p-6 shadow-xl space-y-4 text-center">
@@ -626,18 +747,20 @@ export default function AdminCustomersPage() {
                 This action is permanent and will remove <span className="font-bold text-[#1A1310] dark:text-white">{selectedCustomer.name}</span> from the database.
               </p>
             </div>
+            <FormError message={formError} />
             <div className="flex justify-center gap-2 pt-2">
-              <button 
+              <button
                 onClick={() => setIsDeleteOpen(false)}
                 className="px-4 py-2 rounded-lg border border-orange-200 dark:border-orange-900/40 text-xs font-bold hover:bg-orange-100/30"
               >
                 Cancel
               </button>
-              <button 
+              <button
                 onClick={handleDeleteConfirm}
-                className="px-4 py-2 rounded-lg bg-red-600 text-white text-xs font-bold hover:bg-red-700 shadow-sm"
+                disabled={saving}
+                className="px-4 py-2 rounded-lg bg-red-600 text-white text-xs font-bold hover:bg-red-700 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Delete
+                {saving ? "Deleting..." : "Delete"}
               </button>
             </div>
           </div>

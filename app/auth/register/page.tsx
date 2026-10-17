@@ -22,7 +22,7 @@ export default function RegisterPage() {
     e.preventDefault();
     if (!agreeTerms) return;
     setLoading(true);
-    // Handle registration logic here
+   
     setTimeout(() => setLoading(false), 1500);
   };
 

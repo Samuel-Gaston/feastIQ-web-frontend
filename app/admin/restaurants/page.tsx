@@ -1,31 +1,82 @@
-// app/admin/restaurants/page.tsx
 "use client";
 
-import { 
-  FaUtensils, 
-  FaCheckCircle, 
-  FaClock, 
-  FaBan, 
-  FaSearch, 
-  FaPlus, 
-  FaEye, 
-  FaEdit, 
-  FaTrash, 
-  FaChevronLeft, 
+import {
+  FaUtensils,
+  FaCheckCircle,
+  FaClock,
+  FaBan,
+  FaSearch,
+  FaPlus,
+  FaEye,
+  FaEdit,
+  FaTrash,
+  FaChevronLeft,
   FaChevronRight,
   FaTimes,
-  FaEnvelope,
-  FaPhone,
-  FaMapMarkerAlt,
-  FaLock,
-  FaStore,
-  FaImage,
-  FaCalendarAlt
 } from "react-icons/fa";
 import Topbar from "@/app/components/Topbar";
 import Sidebar from "@/app/components/Sidebar";
 import { useLanguage } from "@/app/context/LanguageContext";
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
+import api from "@/app/api/api";
+
+type Restaurant = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  address: string;
+  description: string;
+  cuisineTags: string[];
+  logoURL: string;
+  openingAndClosingHours: string;
+  status: string;
+};
+
+const emptyForm = {
+  name: "",
+  email: "",
+  password: "",
+  description: "",
+  address: "",
+  cuisineTags: "",
+  logoURL: "",
+  openingAndClosingHours: "",
+  status: "PENDING",
+};
+
+const normalizeRestaurant = (r: any): Restaurant => ({
+  id: String(r._id ?? r.id),
+  name: r.name ?? "",
+  email: r.email ?? r.user?.email ?? "",
+  phone: r.phone ?? "",
+  address: r.address ?? "",
+  description: r.description ?? "",
+  cuisineTags: Array.isArray(r.cuisineTags) ? r.cuisineTags : [],
+  logoURL: r.logoURL ?? "",
+  openingAndClosingHours: r.openingAndClosingHours ?? "",
+  status: r.status ?? "PENDING",
+});
+
+const toTags = (value: string): string[] =>
+  value.split(",").map((tag) => tag.trim()).filter(Boolean);
+
+const getErrorMessage = (err: any, fallback: string): string => {
+  if (!err?.response) return "Cannot reach the server. Check your connection.";
+  const m = err.response?.data?.message;
+  if (Array.isArray(m)) return m.join(", ");
+  return m || fallback;
+};
+
+const FormError = ({ message }: { message: string | null }) =>
+  message ? (
+    <div
+      role="alert"
+      className="text-xs rounded-lg border border-red-200 dark:border-red-900/30 bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-300 px-3 py-2"
+    >
+      {message}
+    </div>
+  ) : null;
 
 export default function AdminRestaurantsPage() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -37,16 +88,12 @@ export default function AdminRestaurantsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
 
-  const [restaurants, setRestaurants] = useState([
-    { id: 1, name: "Le Bicateur", email: "contact@lebicateur.cm", phone: "+237 670000001", address: "Bonanjo, Douala", cuisineTags: ["African", "Grill"], logoURL: "", openingAndClosingHours: "08:00 - 22:00", status: "APPROVED" },
-    { id: 2, name: "S4 Restaurant", email: "info@s4.cm", phone: "+237 670000002", address: "Akwa, Douala", cuisineTags: ["Fast Food", "Burger"], logoURL: "", openingAndClosingHours: "10:00 - 23:00", status: "PENDING" },
-    { id: 3, name: "Pizzeria La Dolce Vita", email: "order@ladolcevita.cm", phone: "+237 670000003", address: "Bastos, Yaoundé", cuisineTags: ["Italian", "Pizza"], logoURL: "", openingAndClosingHours: "11:00 - 23:30", status: "APPROVED" },
-    { id: 4, name: "The Grill Master", email: "grill@master.cm", phone: "+237 670000004", address: "Molyko, Buea", cuisineTags: ["Steakhouse", "BBQ"], logoURL: "", openingAndClosingHours: "12:00 - 00:00", status: "SUSPENEDED" },
-    { id: 5, name: "China Garden", email: "chinagarden@cm.com", phone: "+237 670000005", address: "Bonapriso, Douala", cuisineTags: ["Asian", "Chinese"], logoURL: "", openingAndClosingHours: "10:30 - 22:30", status: "PENDING" },
-    { id: 6, name: "Carrefour Food", email: "food@carrefour.cm", phone: "+237 670000006", address: "Bonamoussadi, Douala", cuisineTags: ["Continental", "Bakery"], logoURL: "", openingAndClosingHours: "08:00 - 21:00", status: "APPROVED" }
-  ]);
+  const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
-  // Modal States
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -54,28 +101,36 @@ export default function AdminRestaurantsPage() {
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
 
   const [selectedRestaurant, setSelectedRestaurant] = useState<any>(null);
+  const [formData, setFormData] = useState(emptyForm);
 
-  // Form States (matching CreateRestaurantDTO)
-  const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    password: "",
-    description: "",
-    address: "",
-    cuisineTags: "",
-    logoURL: "",
-    openingAndClosingHours: "",
-    status: "PENDING",
-  });
+  const fetchRestaurants = useCallback(async () => {
+    try {
+      setLoadError(null);
+      const res = await api.get("/restaurants");
+      const raw = res.data?.data ?? res.data;
+      const list = Array.isArray(raw) ? raw : raw?.items ?? [];
+      setRestaurants(list.map(normalizeRestaurant));
+    } catch (err) {
+      setLoadError(getErrorMessage(err, "Could not load restaurants."));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchRestaurants();
+  }, [fetchRestaurants]);
 
   const totalRestaurants = restaurants.length;
-  const approvedRestaurants = restaurants.filter(r => r.status === "APPROVED").length;
-  const pendingRestaurants = restaurants.filter(r => r.status === "PENDING").length;
+  const approvedRestaurants = restaurants.filter((r) => r.status === "APPROVED").length;
+  const pendingRestaurants = restaurants.filter((r) => r.status === "PENDING").length;
 
-  const filteredRestaurants = restaurants.filter(r => {
-    const matchesSearch = r.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          r.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          (r.address && r.address.toLowerCase().includes(searchQuery.toLowerCase()));
+  const filteredRestaurants = restaurants.filter((r) => {
+    const q = searchQuery.toLowerCase();
+    const matchesSearch =
+      r.name.toLowerCase().includes(q) ||
+      r.email.toLowerCase().includes(q) ||
+      (r.address && r.address.toLowerCase().includes(q));
     const matchesFilter = statusFilter === "all" || r.status === statusFilter;
     return matchesSearch && matchesFilter;
   });
@@ -86,64 +141,116 @@ export default function AdminRestaurantsPage() {
     currentPage * itemsPerPage
   );
 
-  const handleCreateSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const newRest = {
-      id: restaurants.length + 1,
-      name: formData.name,
-      email: formData.email,
-      phone: "+237 600000000",
-      address: formData.address || "Douala, Cameroon",
-      cuisineTags: formData.cuisineTags ? formData.cuisineTags.split(",").map(tag => tag.trim()) : ["General"],
-      logoURL: formData.logoURL,
-      openingAndClosingHours: formData.openingAndClosingHours || "09:00 - 22:00",
-      status: formData.status || "PENDING",
-    };
-    setRestaurants([newRest, ...restaurants]);
-    setFormData({ name: "", email: "", password: "", description: "", address: "", cuisineTags: "", logoURL: "", openingAndClosingHours: "", status: "PENDING" });
-    setIsCreateOpen(false);
-  };
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(totalPages);
+  }, [totalPages, currentPage]);
 
-  const handleEditSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setRestaurants(restaurants.map(r => r.id === selectedRestaurant.id ? { 
-      ...r, 
-      name: formData.name,
-      email: formData.email,
-      address: formData.address,
-      cuisineTags: formData.cuisineTags ? formData.cuisineTags.split(",").map((tag: string) => tag.trim()) : r.cuisineTags,
-      logoURL: formData.logoURL,
-      openingAndClosingHours: formData.openingAndClosingHours,
-      status: formData.status
-    } : r));
-    setIsEditOpen(false);
-  };
-
-  const handleStatusConfirm = () => {
-    setRestaurants(restaurants.map(r => {
-      if (r.id === selectedRestaurant.id) {
-        const nextStatus = r.status === "APPROVED" ? "SUSPENEDED" : "APPROVED";
-        return { ...r, status: nextStatus };
+  const openView = async (rest: Restaurant) => {
+    setSelectedRestaurant(rest);
+    setIsViewOpen(true);
+    try {
+      const res = await api.get(`/restaurants/${rest.id}`);
+      const raw = res.data?.data ?? res.data;
+      if (raw && typeof raw === "object") {
+        setSelectedRestaurant({ ...rest, ...normalizeRestaurant(raw) });
       }
-      return r;
-    }));
-    setIsStatusOpen(false);
+    } catch {}
   };
 
-  const handleDeleteConfirm = () => {
-    setRestaurants(restaurants.filter(r => r.id !== selectedRestaurant.id));
-    setIsDeleteOpen(false);
+  const handleCreateSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setFormError(null);
+    try {
+      const payload: Record<string, any> = {
+        name: formData.name.trim(),
+        email: formData.email.trim(),
+        password: formData.password,
+        status: formData.status,
+      };
+      if (formData.description.trim()) payload.description = formData.description.trim();
+      if (formData.address.trim()) payload.address = formData.address.trim();
+      if (formData.logoURL.trim()) payload.logoURL = formData.logoURL.trim();
+      if (formData.openingAndClosingHours.trim()) payload.openingAndClosingHours = formData.openingAndClosingHours.trim();
+      const tags = toTags(formData.cuisineTags);
+      if (tags.length) payload.cuisineTags = tags;
+
+      await api.post("/restaurants", payload);
+      await fetchRestaurants();
+      setFormData(emptyForm);
+      setCurrentPage(1);
+      setIsCreateOpen(false);
+    } catch (err) {
+      setFormError(getErrorMessage(err, "Could not create the restaurant."));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setFormError(null);
+    try {
+      const payload: Record<string, any> = {
+        name: formData.name.trim(),
+        email: formData.email.trim(),
+      };
+      if (formData.address.trim()) payload.address = formData.address.trim();
+      if (formData.openingAndClosingHours.trim()) payload.openingAndClosingHours = formData.openingAndClosingHours.trim();
+      const tags = toTags(formData.cuisineTags);
+      if (tags.length) payload.cuisineTags = tags;
+
+      await api.patch(`/restaurants/${selectedRestaurant.id}`, payload);
+      if (formData.status !== selectedRestaurant.status) {
+        await api.patch(`/restaurants/${selectedRestaurant.id}/status`, { status: formData.status });
+      }
+      await fetchRestaurants();
+      setIsEditOpen(false);
+    } catch (err) {
+      setFormError(getErrorMessage(err, "Could not update the restaurant."));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleStatusConfirm = async () => {
+    setSaving(true);
+    setFormError(null);
+    try {
+      const nextStatus = selectedRestaurant.status === "APPROVED" ? "SUSPENEDED" : "APPROVED";
+      await api.patch(`/restaurants/${selectedRestaurant.id}/status`, { status: nextStatus });
+      await fetchRestaurants();
+      setIsStatusOpen(false);
+    } catch (err) {
+      setFormError(getErrorMessage(err, "Could not update the restaurant status."));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
+    setSaving(true);
+    setFormError(null);
+    try {
+      await api.delete(`/restaurants/${selectedRestaurant.id}`);
+      await fetchRestaurants();
+      setIsDeleteOpen(false);
+    } catch (err) {
+      setFormError(getErrorMessage(err, "Could not delete the restaurant."));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
     <div style={{ fontFamily: "'Times New Roman', Times, serif" }} className="min-h-screen bg-white dark:bg-[#1A1310] text-[#1A1310] dark:text-white flex transition-colors duration-300">
-      <Sidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(v => !v)} />
+      <Sidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed((v) => !v)} />
 
       <div className="flex-1 flex flex-col min-w-0">
         <Topbar />
 
         <main className="flex-1 p-6 space-y-6 overflow-y-auto">
-          {/* Page Header */}
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
               <h1 className="text-2xl font-black text-[#1A1310] dark:text-white">
@@ -153,9 +260,10 @@ export default function AdminRestaurantsPage() {
                 {restT.subtitle || "Manage platform partner restaurants, approvals, and profiles."}
               </p>
             </div>
-            <button 
+            <button
               onClick={() => {
-                setFormData({ name: "", email: "", password: "", description: "", address: "", cuisineTags: "", logoURL: "", openingAndClosingHours: "", status: "PENDING" });
+                setFormData(emptyForm);
+                setFormError(null);
                 setIsCreateOpen(true);
               }}
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-orange-600 hover:bg-orange-700 text-white shadow-sm transition-all"
@@ -164,9 +272,8 @@ export default function AdminRestaurantsPage() {
             </button>
           </div>
 
-          {/* Three Summary Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div 
+            <div
               onClick={() => { setStatusFilter("all"); setCurrentPage(1); }}
               className={`cursor-pointer bg-orange-50/30 dark:bg-[#241C17]/60 border ${statusFilter === "all" ? "border-orange-500 dark:border-orange-500" : "border-orange-100 dark:border-orange-900/30"} rounded-xl p-4 shadow-sm flex items-center justify-between transition-all`}
             >
@@ -179,7 +286,7 @@ export default function AdminRestaurantsPage() {
               </div>
             </div>
 
-            <div 
+            <div
               onClick={() => { setStatusFilter("APPROVED"); setCurrentPage(1); }}
               className={`cursor-pointer bg-orange-50/30 dark:bg-[#241C17]/60 border ${statusFilter === "APPROVED" ? "border-emerald-500 dark:border-emerald-500" : "border-orange-100 dark:border-orange-900/30"} rounded-xl p-4 shadow-sm flex items-center justify-between transition-all`}
             >
@@ -192,7 +299,7 @@ export default function AdminRestaurantsPage() {
               </div>
             </div>
 
-            <div 
+            <div
               onClick={() => { setStatusFilter("PENDING"); setCurrentPage(1); }}
               className={`cursor-pointer bg-orange-50/30 dark:bg-[#241C17]/60 border ${statusFilter === "PENDING" ? "border-amber-500 dark:border-amber-500" : "border-orange-100 dark:border-orange-900/30"} rounded-xl p-4 shadow-sm flex items-center justify-between transition-all`}
             >
@@ -206,12 +313,26 @@ export default function AdminRestaurantsPage() {
             </div>
           </div>
 
-          {/* Search Bar & Filters Section */}
+          {loadError && (
+            <div
+              role="alert"
+              className="flex items-center justify-between gap-3 text-xs rounded-xl border border-red-200 dark:border-red-900/30 bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-300 px-4 py-3"
+            >
+              <span>{loadError}</span>
+              <button
+                onClick={() => { setLoading(true); fetchRestaurants(); }}
+                className="px-3 py-1.5 rounded-lg bg-red-600 text-white font-bold hover:bg-red-700"
+              >
+                Retry
+              </button>
+            </div>
+          )}
+
           <div className="bg-orange-50/30 dark:bg-[#241C17]/60 border border-orange-100 dark:border-orange-900/30 rounded-xl p-5 shadow-sm space-y-4">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
               <div className="relative w-full sm:w-80">
                 <FaSearch className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" size={13} />
-                <input 
+                <input
                   type="text"
                   placeholder={restT.searchPlaceholder || "Search restaurants..."}
                   value={searchQuery}
@@ -222,7 +343,7 @@ export default function AdminRestaurantsPage() {
 
               <div className="flex items-center gap-2 w-full sm:w-auto">
                 <span className="text-xs text-gray-500 dark:text-white/60 font-semibold">Status:</span>
-                <select 
+                <select
                   value={statusFilter}
                   onChange={(e) => { setStatusFilter(e.target.value); setCurrentPage(1); }}
                   className="px-3 py-2 text-xs bg-white dark:bg-[#1A1310] border border-orange-200 dark:border-orange-900/40 rounded-lg text-[#1A1310] dark:text-white focus:outline-none focus:border-orange-500"
@@ -235,8 +356,7 @@ export default function AdminRestaurantsPage() {
               </div>
             </div>
 
-            {/* Table Container */}
-            <div 
+            <div
               className="overflow-x-auto w-full pb-2"
               style={{
                 scrollbarWidth: "thin",
@@ -255,7 +375,13 @@ export default function AdminRestaurantsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-orange-100/50 dark:divide-orange-900/20 text-[13px]">
-                  {paginatedRestaurants.length > 0 ? (
+                  {loading ? (
+                    <tr>
+                      <td colSpan={6} className="py-6 text-center text-gray-400 dark:text-white/40 text-xs">
+                        Loading restaurants...
+                      </td>
+                    </tr>
+                  ) : paginatedRestaurants.length > 0 ? (
                     paginatedRestaurants.map((rest) => (
                       <tr key={rest.id} className="hover:bg-orange-100/20 dark:hover:bg-white/5 transition-colors">
                         <td className="py-3 font-bold text-[#1A1310] dark:text-white whitespace-nowrap flex items-center gap-2">
@@ -269,7 +395,7 @@ export default function AdminRestaurantsPage() {
                         </td>
                         <td className="py-3 whitespace-nowrap">
                           <div className="flex gap-1 flex-wrap">
-                            {rest.cuisineTags?.map((tag: string, idx: number) => (
+                            {rest.cuisineTags.map((tag, idx) => (
                               <span key={idx} className="px-2 py-0.5 rounded-md text-[10px] bg-orange-100 dark:bg-orange-950/40 text-orange-600 dark:text-orange-400 font-semibold">
                                 {tag}
                               </span>
@@ -298,44 +424,45 @@ export default function AdminRestaurantsPage() {
                         </td>
                         <td className="py-3 text-right whitespace-nowrap">
                           <div className="inline-flex items-center gap-2">
-                            <button 
-                              onClick={() => { setSelectedRestaurant(rest); setIsViewOpen(true); }}
-                              title="View Details" 
+                            <button
+                              onClick={() => openView(rest)}
+                              title="View Details"
                               className="p-1.5 rounded-lg bg-blue-100/50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 hover:bg-blue-200 transition-colors"
                             >
                               <FaEye size={12} />
                             </button>
-                            <button 
-                              onClick={() => { setSelectedRestaurant(rest); setIsStatusOpen(true); }}
-                              title="Toggle Status" 
+                            <button
+                              onClick={() => { setSelectedRestaurant(rest); setFormError(null); setIsStatusOpen(true); }}
+                              title="Toggle Status"
                               className="p-1.5 rounded-lg bg-amber-100/50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 hover:bg-amber-200 transition-colors"
                             >
                               <FaBan size={12} />
                             </button>
-                            <button 
-                              onClick={() => { 
-                                setSelectedRestaurant(rest); 
-                                setFormData({ 
-                                  name: rest.name, 
-                                  email: rest.email, 
-                                  password: "", 
-                                  description: rest.address || "", 
-                                  address: rest.address || "", 
-                                  cuisineTags: rest.cuisineTags ? rest.cuisineTags.join(", ") : "", 
-                                  logoURL: rest.logoURL || "", 
-                                  openingAndClosingHours: rest.openingAndClosingHours || "", 
-                                  status: rest.status 
+                            <button
+                              onClick={() => {
+                                setSelectedRestaurant(rest);
+                                setFormData({
+                                  name: rest.name,
+                                  email: rest.email,
+                                  password: "",
+                                  description: rest.description,
+                                  address: rest.address,
+                                  cuisineTags: rest.cuisineTags.join(", "),
+                                  logoURL: rest.logoURL,
+                                  openingAndClosingHours: rest.openingAndClosingHours,
+                                  status: rest.status,
                                 });
-                                setIsEditOpen(true); 
+                                setFormError(null);
+                                setIsEditOpen(true);
                               }}
-                              title="Edit Restaurant" 
+                              title="Edit Restaurant"
                               className="p-1.5 rounded-lg bg-orange-100/50 dark:bg-orange-950/40 text-orange-600 dark:text-orange-400 hover:bg-orange-200 transition-colors"
                             >
                               <FaEdit size={12} />
                             </button>
-                            <button 
-                              onClick={() => { setSelectedRestaurant(rest); setIsDeleteOpen(true); }}
-                              title="Delete Restaurant" 
+                            <button
+                              onClick={() => { setSelectedRestaurant(rest); setFormError(null); setIsDeleteOpen(true); }}
+                              title="Delete Restaurant"
                               className="p-1.5 rounded-lg bg-red-100/50 dark:bg-red-950/40 text-red-600 dark:text-red-400 hover:bg-red-200 transition-colors"
                             >
                               <FaTrash size={12} />
@@ -355,15 +482,14 @@ export default function AdminRestaurantsPage() {
               </table>
             </div>
 
-            {/* Pagination Controls */}
             {totalPages > 1 && (
               <div className="flex items-center justify-between pt-3 border-t border-orange-100 dark:border-orange-900/30 text-xs">
                 <span className="text-gray-500 dark:text-white/60">
                   Page {currentPage} of {totalPages}
                 </span>
                 <div className="flex items-center gap-1">
-                  <button 
-                    onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
                     disabled={currentPage === 1}
                     className="p-2 rounded-lg border border-orange-200 dark:border-orange-900/40 disabled:opacity-40 text-gray-600 dark:text-white hover:bg-orange-100/30 transition-colors"
                   >
@@ -382,8 +508,8 @@ export default function AdminRestaurantsPage() {
                       {page}
                     </button>
                   ))}
-                  <button 
-                    onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))}
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
                     disabled={currentPage === totalPages}
                     className="p-2 rounded-lg border border-orange-200 dark:border-orange-900/40 disabled:opacity-40 text-gray-600 dark:text-white hover:bg-orange-100/30 transition-colors"
                   >
@@ -396,7 +522,6 @@ export default function AdminRestaurantsPage() {
         </main>
       </div>
 
-      {/* CREATE RESTAURANT MODAL */}
       {isCreateOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto">
           <div className="bg-white dark:bg-[#241C17] border border-orange-200 dark:border-orange-900/40 rounded-2xl w-full max-w-lg p-6 shadow-xl space-y-4 my-8">
@@ -410,23 +535,23 @@ export default function AdminRestaurantsPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 dark:text-white/70 mb-1">Restaurant Name *</label>
-                  <input 
-                    type="text" 
-                    required 
+                  <input
+                    type="text"
+                    required
                     placeholder="Enter name"
                     value={formData.name}
-                    onChange={(e) => setFormData({...formData, name: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     className="w-full px-3 py-2 text-xs bg-orange-50/30 dark:bg-[#1A1310] border border-orange-200 dark:border-orange-900/40 rounded-lg focus:outline-none focus:border-orange-500"
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 dark:text-white/70 mb-1">Email *</label>
-                  <input 
-                    type="email" 
-                    required 
+                  <input
+                    type="email"
+                    required
                     placeholder="Enter email"
                     value={formData.email}
-                    onChange={(e) => setFormData({...formData, email: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     className="w-full px-3 py-2 text-xs bg-orange-50/30 dark:bg-[#1A1310] border border-orange-200 dark:border-orange-900/40 rounded-lg focus:outline-none focus:border-orange-500"
                   />
                 </div>
@@ -434,92 +559,94 @@ export default function AdminRestaurantsPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 dark:text-white/70 mb-1">Password *</label>
-                  <input 
-                    type="password" 
-                    required 
+                  <input
+                    type="password"
+                    required
                     placeholder="Enter password"
                     value={formData.password}
-                    onChange={(e) => setFormData({...formData, password: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                     className="w-full px-3 py-2 text-xs bg-orange-50/30 dark:bg-[#1A1310] border border-orange-200 dark:border-orange-900/40 rounded-lg focus:outline-none focus:border-orange-500"
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 dark:text-white/70 mb-1">Cuisine Tags (comma separated)</label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     placeholder="e.g. African, Fast Food"
                     value={formData.cuisineTags}
-                    onChange={(e) => setFormData({...formData, cuisineTags: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, cuisineTags: e.target.value })}
                     className="w-full px-3 py-2 text-xs bg-orange-50/30 dark:bg-[#1A1310] border border-orange-200 dark:border-orange-900/40 rounded-lg focus:outline-none focus:border-orange-500"
                   />
                 </div>
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-600 dark:text-white/70 mb-1">Address</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   placeholder="Enter restaurant location"
                   value={formData.address}
-                  onChange={(e) => setFormData({...formData, address: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                   className="w-full px-3 py-2 text-xs bg-orange-50/30 dark:bg-[#1A1310] border border-orange-200 dark:border-orange-900/40 rounded-lg focus:outline-none focus:border-orange-500"
                 />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 dark:text-white/70 mb-1">Opening & Closing Hours</label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     placeholder="e.g. 08:00 - 22:00"
                     value={formData.openingAndClosingHours}
-                    onChange={(e) => setFormData({...formData, openingAndClosingHours: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, openingAndClosingHours: e.target.value })}
                     className="w-full px-3 py-2 text-xs bg-orange-50/30 dark:bg-[#1A1310] border border-orange-200 dark:border-orange-900/40 rounded-lg focus:outline-none focus:border-orange-500"
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 dark:text-white/70 mb-1">Logo URL</label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     placeholder="https://..."
                     value={formData.logoURL}
-                    onChange={(e) => setFormData({...formData, logoURL: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, logoURL: e.target.value })}
                     className="w-full px-3 py-2 text-xs bg-orange-50/30 dark:bg-[#1A1310] border border-orange-200 dark:border-orange-900/40 rounded-lg focus:outline-none focus:border-orange-500"
                   />
                 </div>
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-600 dark:text-white/70 mb-1">Description</label>
-                <textarea 
+                <textarea
                   rows={2}
                   placeholder="Brief description of the restaurant..."
                   value={formData.description}
-                  onChange={(e) => setFormData({...formData, description: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   className="w-full px-3 py-2 text-xs bg-orange-50/30 dark:bg-[#1A1310] border border-orange-200 dark:border-orange-900/40 rounded-lg focus:outline-none focus:border-orange-500 resize-none"
                 />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-600 dark:text-white/70 mb-1">Initial Status</label>
-                <select 
+                <select
                   value={formData.status}
-                  onChange={(e) => setFormData({...formData, status: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
                   className="w-full px-3 py-2 text-xs bg-orange-50/30 dark:bg-[#1A1310] border border-orange-200 dark:border-orange-900/40 rounded-lg focus:outline-none focus:border-orange-500"
                 >
                   <option value="PENDING">PENDING</option>
                   <option value="APPROVED">APPROVED</option>
                 </select>
               </div>
+              <FormError message={formError} />
               <div className="flex justify-end gap-2 pt-3">
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={() => setIsCreateOpen(false)}
                   className="px-4 py-2 rounded-lg border border-orange-200 dark:border-orange-900/40 text-xs font-bold hover:bg-orange-100/30"
                 >
                   Cancel
                 </button>
-                <button 
+                <button
                   type="submit"
-                  className="px-4 py-2 rounded-lg bg-orange-600 text-white text-xs font-bold hover:bg-orange-700 shadow-sm"
+                  disabled={saving}
+                  className="px-4 py-2 rounded-lg bg-orange-600 text-white text-xs font-bold hover:bg-orange-700 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Save Restaurant
+                  {saving ? "Saving..." : "Save Restaurant"}
                 </button>
               </div>
             </form>
@@ -527,7 +654,6 @@ export default function AdminRestaurantsPage() {
         </div>
       )}
 
-      {/* VIEW RESTAURANT MODAL */}
       {isViewOpen && selectedRestaurant && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="bg-white dark:bg-[#241C17] border border-orange-200 dark:border-orange-900/40 rounded-2xl w-full max-w-md p-6 shadow-xl space-y-4">
@@ -568,7 +694,7 @@ export default function AdminRestaurantsPage() {
               </div>
             </div>
             <div className="flex justify-end pt-2">
-              <button 
+              <button
                 onClick={() => setIsViewOpen(false)}
                 className="px-4 py-2 rounded-lg bg-orange-600 text-white text-xs font-bold hover:bg-orange-700 shadow-sm"
               >
@@ -579,7 +705,6 @@ export default function AdminRestaurantsPage() {
         </div>
       )}
 
-      {/* EDIT RESTAURANT MODAL */}
       {isEditOpen && selectedRestaurant && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto">
           <div className="bg-white dark:bg-[#241C17] border border-orange-200 dark:border-orange-900/40 rounded-2xl w-full max-w-lg p-6 shadow-xl space-y-4 my-8">
@@ -593,21 +718,21 @@ export default function AdminRestaurantsPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 dark:text-white/70 mb-1">Restaurant Name *</label>
-                  <input 
-                    type="text" 
-                    required 
+                  <input
+                    type="text"
+                    required
                     value={formData.name}
-                    onChange={(e) => setFormData({...formData, name: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     className="w-full px-3 py-2 text-xs bg-orange-50/30 dark:bg-[#1A1310] border border-orange-200 dark:border-orange-900/40 rounded-lg focus:outline-none focus:border-orange-500"
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 dark:text-white/70 mb-1">Email *</label>
-                  <input 
-                    type="email" 
-                    required 
+                  <input
+                    type="email"
+                    required
                     value={formData.email}
-                    onChange={(e) => setFormData({...formData, email: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     className="w-full px-3 py-2 text-xs bg-orange-50/30 dark:bg-[#1A1310] border border-orange-200 dark:border-orange-900/40 rounded-lg focus:outline-none focus:border-orange-500"
                   />
                 </div>
@@ -615,37 +740,37 @@ export default function AdminRestaurantsPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 dark:text-white/70 mb-1">Cuisine Tags</label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     value={formData.cuisineTags}
-                    onChange={(e) => setFormData({...formData, cuisineTags: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, cuisineTags: e.target.value })}
                     className="w-full px-3 py-2 text-xs bg-orange-50/30 dark:bg-[#1A1310] border border-orange-200 dark:border-orange-900/40 rounded-lg focus:outline-none focus:border-orange-500"
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 dark:text-white/70 mb-1">Hours</label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     value={formData.openingAndClosingHours}
-                    onChange={(e) => setFormData({...formData, openingAndClosingHours: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, openingAndClosingHours: e.target.value })}
                     className="w-full px-3 py-2 text-xs bg-orange-50/30 dark:bg-[#1A1310] border border-orange-200 dark:border-orange-900/40 rounded-lg focus:outline-none focus:border-orange-500"
                   />
                 </div>
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-600 dark:text-white/70 mb-1">Address</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   value={formData.address}
-                  onChange={(e) => setFormData({...formData, address: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                   className="w-full px-3 py-2 text-xs bg-orange-50/30 dark:bg-[#1A1310] border border-orange-200 dark:border-orange-900/40 rounded-lg focus:outline-none focus:border-orange-500"
                 />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-600 dark:text-white/70 mb-1">Status</label>
-                <select 
+                <select
                   value={formData.status}
-                  onChange={(e) => setFormData({...formData, status: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
                   className="w-full px-3 py-2 text-xs bg-orange-50/30 dark:bg-[#1A1310] border border-orange-200 dark:border-orange-900/40 rounded-lg focus:outline-none focus:border-orange-500"
                 >
                   <option value="PENDING">PENDING</option>
@@ -653,19 +778,21 @@ export default function AdminRestaurantsPage() {
                   <option value="SUSPENEDED">SUSPENEDED</option>
                 </select>
               </div>
+              <FormError message={formError} />
               <div className="flex justify-end gap-2 pt-3">
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={() => setIsEditOpen(false)}
                   className="px-4 py-2 rounded-lg border border-orange-200 dark:border-orange-900/40 text-xs font-bold hover:bg-orange-100/30"
                 >
                   Cancel
                 </button>
-                <button 
+                <button
                   type="submit"
-                  className="px-4 py-2 rounded-lg bg-orange-600 text-white text-xs font-bold hover:bg-orange-700 shadow-sm"
+                  disabled={saving}
+                  className="px-4 py-2 rounded-lg bg-orange-600 text-white text-xs font-bold hover:bg-orange-700 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Update Restaurant
+                  {saving ? "Saving..." : "Update Restaurant"}
                 </button>
               </div>
             </form>
@@ -673,7 +800,6 @@ export default function AdminRestaurantsPage() {
         </div>
       )}
 
-      {/* STATUS TOGGLE MODAL */}
       {isStatusOpen && selectedRestaurant && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="bg-white dark:bg-[#241C17] border border-orange-200 dark:border-orange-900/40 rounded-2xl w-full max-w-sm p-6 shadow-xl space-y-4 text-center">
@@ -688,25 +814,26 @@ export default function AdminRestaurantsPage() {
                 Change status for <span className="font-bold text-[#1A1310] dark:text-white">{selectedRestaurant.name}</span>?
               </p>
             </div>
+            <FormError message={formError} />
             <div className="flex justify-center gap-2 pt-2">
-              <button 
+              <button
                 onClick={() => setIsStatusOpen(false)}
                 className="px-4 py-2 rounded-lg border border-orange-200 dark:border-orange-900/40 text-xs font-bold hover:bg-orange-100/30"
               >
                 Cancel
               </button>
-              <button 
+              <button
                 onClick={handleStatusConfirm}
-                className="px-4 py-2 rounded-lg bg-amber-600 text-white text-xs font-bold hover:bg-amber-700 shadow-sm"
+                disabled={saving}
+                className="px-4 py-2 rounded-lg bg-amber-600 text-white text-xs font-bold hover:bg-amber-700 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Confirm
+                {saving ? "Saving..." : "Confirm"}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* DELETE RESTAURANT MODAL */}
       {isDeleteOpen && selectedRestaurant && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="bg-white dark:bg-[#241C17] border border-orange-200 dark:border-orange-900/40 rounded-2xl w-full max-w-sm p-6 shadow-xl space-y-4 text-center">
@@ -719,18 +846,20 @@ export default function AdminRestaurantsPage() {
                 This will permanently remove <span className="font-bold text-[#1A1310] dark:text-white">{selectedRestaurant.name}</span>.
               </p>
             </div>
+            <FormError message={formError} />
             <div className="flex justify-center gap-2 pt-2">
-              <button 
+              <button
                 onClick={() => setIsDeleteOpen(false)}
                 className="px-4 py-2 rounded-lg border border-orange-200 dark:border-orange-900/40 text-xs font-bold hover:bg-orange-100/30"
               >
                 Cancel
               </button>
-              <button 
+              <button
                 onClick={handleDeleteConfirm}
-                className="px-4 py-2 rounded-lg bg-red-600 text-white text-xs font-bold hover:bg-red-700 shadow-sm"
+                disabled={saving}
+                className="px-4 py-2 rounded-lg bg-red-600 text-white text-xs font-bold hover:bg-red-700 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Delete
+                {saving ? "Deleting..." : "Delete"}
               </button>
             </div>
           </div>
